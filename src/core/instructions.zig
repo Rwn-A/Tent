@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const sext = @import("cpu.zig").sext;
+
 const DecodeError = error{UnknownInstruction};
 
 pub const Instr_Function = enum(u32) {
@@ -63,19 +65,30 @@ pub const R_Type_Instr = struct {
     rs2: u32,
 };
 
+pub const B_Type_Instr = struct {
+    function: Instr_Function,
+    rs1: u32,
+    rs2: u32,
+    imm: u32,
+};
+
 pub const Instruction = union(enum) {
     I_type: I_Type_Instr,
     R_type: R_Type_Instr,
+    B_type: B_Type_Instr,
 
     pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
         switch (self) {
             .I_type => |inst| {
-                try writer.print("{s}, x{d}, x{d}, {d}\n", .{ @tagName(inst.function), inst.rd, inst.rs1, @as(i32, @bitCast(inst.imm)) });
+                try writer.print("{s}, x{d}, x{d}, {d}", .{ @tagName(inst.function), inst.rd, inst.rs1, @as(i32, @bitCast(inst.imm)) });
             },
             .R_type => |inst| {
-                try writer.print("{s}, x{d}, x{d}, x{d}\n", .{ @tagName(inst.function), inst.rd, inst.rs1, inst.rs2 });
+                try writer.print("{s}, x{d}, x{d}, x{d}", .{ @tagName(inst.function), inst.rd, inst.rs1, inst.rs2 });
+            },
+            .B_type => |inst| {
+                try writer.print("{s}, x{d}, x{d}, {d}", .{ @tagName(inst.function), inst.rs1, inst.rs2, @as(i32, @bitCast(inst.imm)) });
             },
         }
     }
@@ -85,6 +98,7 @@ pub fn decode(encoded_instruction: u32) DecodeError!Instruction {
     return switch (get_field(encoded_instruction, 0, 7)) {
         0x33 => .{ .R_type = try decode_R_type_instr(encoded_instruction) },
         0x03, 0x67, 0x13, 0x73 => .{ .I_type = try decode_I_type_instr(encoded_instruction) },
+        0x63 => .{ .B_type = try decode_B_type_instr(encoded_instruction) },
         else => return DecodeError.UnknownInstruction,
     };
 }
@@ -125,6 +139,28 @@ fn decode_I_type_instr(encoded_instruction: u32) DecodeError!I_Type_Instr {
     return result;
 }
 
+fn decode_B_type_instr(encoded_instruction: u32) DecodeError!B_Type_Instr {
+    var result: B_Type_Instr = undefined;
+    const funct3 = get_field(encoded_instruction, 12, 3);
+    result.rs1 = get_field(encoded_instruction, 15, 5);
+    result.rs2 = get_field(encoded_instruction, 20, 5);
+    const imm11 = get_field(encoded_instruction, 7, 1);
+    const imm4_1 = get_field(encoded_instruction, 8, 4);
+    const imm10_5 = get_field(encoded_instruction, 25, 6);
+    const imm12 = get_field(encoded_instruction, 31, 1);
+    result.imm = sext((imm12 << 12) | (imm11 << 11) | (imm10_5 << 5) | (imm4_1 << 1), 13);
+    result.function = switch (funct3) {
+        0b000 => .Beq,
+        0b001 => .Bne,
+        0b100 => .Blt,
+        0b101 => .Bge,
+        0b110 => .Bltu,
+        0b111 => .Bgeu,
+        else => return DecodeError.UnknownInstruction,
+    };
+    return result;
+}
+
 fn decode_R_type_instr(encoded_instruction: u32) DecodeError!R_Type_Instr {
     var result: R_Type_Instr = undefined;
     const funct3 = get_field(encoded_instruction, 12, 3);
@@ -156,13 +192,6 @@ fn decode_R_type_instr(encoded_instruction: u32) DecodeError!R_Type_Instr {
 
 fn get_field(encoded_instruction: u32, start: u5, size: u5) u32 {
     return (encoded_instruction >> start) & ((@as(u32, 1) << size) - 1);
-}
-
-fn sext(value: u32, bits: u5) u32 {
-    if (value & (@as(u32, 1) << (bits - 1)) != 0) {
-        return value | ~((@as(u32, 1) << bits) - 1);
-    }
-    return value;
 }
 
 test "Decode I-type" {

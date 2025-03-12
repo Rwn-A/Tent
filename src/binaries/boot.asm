@@ -1,7 +1,16 @@
-   .section .text
+   .text
     .global _start
 
 _start:
-    li a0, 5       # Load 5 into register a0
-    li a1, 10      # Load 10 into register a1
-    add a2, a0, a1 # a2 = a0 + a1 (5 + 10 = 15)
+    addi x5, x0, 0      # x5 = counter (start at 0)
+    
+loop:
+    # Check if counter (x5) is greater than 10
+    slti x6, x5, 10   # x6 = (x5 < 11) ? 1 : 0
+    beq x6, x0, exit    # If x6 == 0 (x5 >= 11), exit loop
+
+    addi x5, x5, 1      # counter += 1
+    beq x0, x0, loop
+
+exit:
+    and x0, x0, x0

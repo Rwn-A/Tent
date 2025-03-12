@@ -4,6 +4,17 @@ const instructions = @import("instructions.zig");
 const Instruction = @import("instructions.zig").Instruction;
 const Memory = @import("memory.zig").Memory;
 
+pub fn sext(value: u32, bits: u5) u32 {
+    if (value & (@as(u32, 1) << (bits - 1)) != 0) {
+        return value | ~((@as(u32, 1) << bits) - 1);
+    }
+    return value;
+}
+
+pub fn zext(value: u32, bits: u5) u32 {
+    return value & ((@as(u32, 1) << bits) - 1);
+}
+
 pub const Cpu = struct {
     const Self = @This();
 
@@ -17,7 +28,7 @@ pub const Cpu = struct {
     }
 
     pub fn run(self: *Self) !void {
-        std.log.info("Starting CPU at 0x{x}", .{self.pc});
+        std.log.info("Starting CPU at 0x{x}\n", .{self.pc});
         while (true) {
             std.log.debug("Fetching from 0x{x}", .{self.pc});
             const encoded_instruction = try self.fetch();
@@ -25,6 +36,7 @@ pub const Cpu = struct {
             const decoded_instruction = try self.decode(encoded_instruction);
             std.log.debug("Decoded instruction {s}", .{decoded_instruction});
             try self.execute(decoded_instruction);
+            std.log.debug("Executed instruction:\n    reg: {any}\n", .{self.registers});
         }
     }
 
@@ -38,11 +50,59 @@ pub const Cpu = struct {
         return instructions.decode(encoded_instruction);
     }
 
-    fn execute(self: *Self, inst: Instruction) !void {
-        _ = self;
-        switch (inst) {
-            .R_type => {},
-            .I_type => {},
+    fn execute(self: *Self, inst_u: Instruction) !void {
+        switch (inst_u) {
+            .R_type => |inst| {
+                switch (inst.function) {
+                    .Add => self.register_write(inst.rd, self.registers[inst.rs1] +% self.registers[inst.rs2]),
+                    .Sub => self.register_write(inst.rd, self.registers[inst.rs1] -% self.registers[inst.rs2]),
+                    else => unreachable,
+                }
+            },
+            .I_type => |inst| {
+                const value = inst.imm +% self.registers[inst.rs1];
+                switch (inst.function) {
+                    .Addi => self.register_write(inst.rd, value),
+                    .Lw => self.register_write(inst.rd, try self.memory.read(u32, value)),
+                    .Lh => self.register_write(inst.rd, sext(try self.memory.read(u16, value), 16)),
+                    .Lhu => self.register_write(inst.rd, zext(try self.memory.read(u16, value), 16)),
+                    .Lb => self.register_write(inst.rd, sext(try self.memory.read(u8, value), 8)),
+                    .Lbu => self.register_write(inst.rd, zext(try self.memory.read(u8, value), 8)),
+                    .Slti => {
+                        const a: i32 = @bitCast(self.registers[inst.rs1]);
+                        const b: i32 = @bitCast(inst.imm);
+                        self.register_write(inst.rd, if (a < b) 1 else 0);
+                    },
+                    .Sltu => self.register_write(inst.rd, if (self.registers[inst.rs1] < inst.imm) 1 else 0),
+                    .Xori => self.register_write(inst.rd, self.registers[inst.rs1] ^ inst.imm),
+                    .Ori => self.register_write(inst.rd, self.registers[inst.rs1] | inst.imm),
+                    .Andi => self.register_write(inst.rd, self.registers[inst.rs1] & inst.imm),
+                    .Ecall, .Ebreak => std.log.info("Tried to Ecall/Ebreak at 0x{x}", .{self.pc}),
+                    .Jalr => {
+                        self.register_write(inst.rd, self.pc);
+                        self.pc = value & ~@as(u32, 1); //ensures aligned jump
+                    },
+                    else => unreachable,
+                }
+            },
+            .B_type => |inst| {
+                const a: i32 = @bitCast(self.registers[inst.rs1]);
+                const b: i32 = @bitCast(self.registers[inst.rs2]);
+                switch (inst.function) {
+                    .Blt => self.pc +%= if (a < b) inst.imm - 4 else 0,
+                    .Beq => self.pc +%= if (a == b) inst.imm - 4 else 0,
+                    .Bne => self.pc +%= if (a != b) inst.imm - 4 else 0,
+                    .Bge => self.pc +%= if (a >= b) inst.imm - 4 else 0,
+                    .Bltu => self.pc +%= if (self.registers[inst.rs1] < self.registers[inst.rs2]) inst.imm - 4 else 0,
+                    .Bgeu => self.pc +%= if (self.registers[inst.rs1] >= self.registers[inst.rs2]) inst.imm - 4 else 0,
+                    else => unreachable,
+                }
+            },
         }
+    }
+
+    fn register_write(self: *Self, rd: u32, value: u32) void {
+        if (rd == 0) return;
+        self.registers[rd] = value;
     }
 };
