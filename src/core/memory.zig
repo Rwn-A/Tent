@@ -1,4 +1,5 @@
 const std = @import("std");
+const root = @import("root");
 
 const MemoryError = error{
     OutOfBounds,
@@ -10,11 +11,10 @@ const MemoryError = error{
 pub const Memory = struct {
     const Self = @This();
 
-    pub const RomSize = 1024 * 8; //8KB
-    pub const RamSize = 1024 * 1024 * 8; //8MB
+    pub const RomSize = 0x2000;
+    pub const RamSize = 0x800000;
 
-    //The decision to start rom at 0x1000_0000 was made after I read somewhere it was the convention
-    pub const RomStart = 0x1000_0000;
+    pub const RomStart = 0x10000000;
     pub const RamStart = RomStart + RomSize;
 
     //0xe4 & 0xe5 were chosen so i can easily recognize un-initialized memory
@@ -33,6 +33,7 @@ pub const Memory = struct {
             const addr = address - RamStart;
             return std.mem.readVarInt(T, self.ram[addr .. addr + @sizeOf(T)], .little);
         }
+        std.log.err("Out of bounds read to {d}", .{address});
         return MemoryError.OutOfBounds;
     }
 
@@ -52,6 +53,7 @@ pub const Memory = struct {
             }
             return;
         }
+        std.log.err("Out of bounds write to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
         return MemoryError.OutOfBounds;
     }
 };

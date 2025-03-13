@@ -1,6 +1,11 @@
 const std = @import("std");
 
 const sext = @import("cpu.zig").sext;
+const zext = @import("cpu.zig").zext;
+
+// Type definitions and decoding logic for RiscV instructions.
+// Some of the immediate decoding logic was done with AI, although it took alot of coercing to get right.
+// I am not a bit-fiddling master so there is a good chance some of the decodes are slow and/or inelegant.
 
 const DecodeError = error{UnknownInstruction};
 
@@ -85,12 +90,19 @@ pub const J_Type_Instr = struct {
     rd: u32,
 };
 
+pub const U_Type_Instr = struct {
+    function: Instr_Function,
+    imm: u32,
+    rd: u32,
+};
+
 pub const Instruction = union(enum) {
     I_type: I_Type_Instr,
     R_type: R_Type_Instr,
     B_type: B_Type_Instr,
     S_type: S_Type_Instr,
     J_type: J_Type_Instr,
+    U_type: U_Type_Instr,
 
     pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
@@ -111,6 +123,9 @@ pub const Instruction = union(enum) {
             .J_type => |inst| {
                 try writer.print("{s}, x{d}, {d}", .{ @tagName(inst.function), inst.rd, @as(i32, @bitCast(inst.imm)) });
             },
+            .U_type => |inst| {
+                try writer.print("{s}, x{d}, {d}", .{ @tagName(inst.function), inst.rd, @as(u32, @bitCast(inst.imm)) });
+            },
         }
     }
 };
@@ -121,6 +136,7 @@ pub fn decode(encoded_instruction: u32) DecodeError!Instruction {
         0x63 => .{ .B_type = try decode_B_type_instr(encoded_instruction) },
         0x23 => .{ .S_type = try decode_S_type_instr(encoded_instruction) },
         0x6F => .{ .J_type = try decode_J_type_instr(encoded_instruction) },
+        0x37, 0x17 => return .{ .U_type = try decode_U_type_instr(encoded_instruction) },
         0x03, 0x67, 0x13, 0x73 => .{ .I_type = try decode_I_type_instr(encoded_instruction) },
         else => return DecodeError.UnknownInstruction,
     };
@@ -171,6 +187,15 @@ fn decode_J_type_instr(encoded_instruction: u32) DecodeError!J_Type_Instr {
     const imm19_12 = get_field(encoded_instruction, 12, 8);
     result.imm = sext((imm20 << 19) | (imm19_12 << 12) | (imm10_1 << 1) | (imm11 << 11), 20);
     result.function = .Jal;
+    return result;
+}
+
+fn decode_U_type_instr(encoded_instruction: u32) DecodeError!U_Type_Instr {
+    var result: U_Type_Instr = undefined;
+    const opc = get_field(encoded_instruction, 0, 7);
+    result.function = if (opc == 0x37) .Lui else .Auipc;
+    result.rd = get_field(encoded_instruction, 7, 5);
+    result.imm = zext(get_field(encoded_instruction, 12, 20), 20);
     return result;
 }
 

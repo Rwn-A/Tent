@@ -4,6 +4,9 @@ const instructions = @import("instructions.zig");
 const Instruction = @import("instructions.zig").Instruction;
 const Memory = @import("memory.zig").Memory;
 
+// Contains the code to execute instructions and wrappers for fetch and decode
+// This can be considered the entry point of the library.
+
 pub fn sext(value: u32, bits: u5) u32 {
     if (value & (@as(u32, 1) << (bits - 1)) != 0) {
         return value | ~((@as(u32, 1) << bits) - 1);
@@ -101,7 +104,7 @@ pub const Cpu = struct {
                     .Ecall, .Ebreak => std.log.info("Tried to Ecall/Ebreak at 0x{x}", .{self.pc}),
                     .Jalr => {
                         self.register_write(inst.rd, self.pc);
-                        self.pc = value;
+                        self.pc = value & ~@as(u32, 1);
                     },
                     else => unreachable,
                 }
@@ -110,12 +113,12 @@ pub const Cpu = struct {
                 const a: i32 = @bitCast(self.registers[inst.rs1]);
                 const b: i32 = @bitCast(self.registers[inst.rs2]);
                 switch (inst.function) {
-                    .Blt => self.pc +%= if (a < b) inst.imm - 4 else 0,
-                    .Beq => self.pc +%= if (a == b) inst.imm - 4 else 0,
-                    .Bne => self.pc +%= if (a != b) inst.imm - 4 else 0,
-                    .Bge => self.pc +%= if (a >= b) inst.imm - 4 else 0,
-                    .Bltu => self.pc +%= if (self.registers[inst.rs1] < self.registers[inst.rs2]) inst.imm - 4 else 0,
-                    .Bgeu => self.pc +%= if (self.registers[inst.rs1] >= self.registers[inst.rs2]) inst.imm - 4 else 0,
+                    .Blt => self.pc +%= if (a < b) inst.imm -% 4 else 0,
+                    .Beq => self.pc +%= if (a == b) inst.imm -% 4 else 0,
+                    .Bne => self.pc +%= if (a != b) inst.imm -% 4 else 0,
+                    .Bge => self.pc +%= if (a >= b) inst.imm -% 4 else 0,
+                    .Bltu => self.pc +%= if (self.registers[inst.rs1] < self.registers[inst.rs2]) inst.imm -% 4 else 0,
+                    .Bgeu => self.pc +%= if (self.registers[inst.rs1] >= self.registers[inst.rs2]) inst.imm -% 4 else 0,
                     else => unreachable,
                 }
             },
@@ -130,7 +133,14 @@ pub const Cpu = struct {
             .J_type => |inst| {
                 if (inst.function != .Jal) unreachable;
                 self.register_write(inst.rd, self.pc);
-                self.pc +%= inst.imm;
+                self.pc +%= ((inst.imm) -% 4);
+            },
+            .U_type => |inst| {
+                switch (inst.function) {
+                    .Lui => self.register_write(inst.rd, inst.imm << 12),
+                    .Auipc => self.register_write(inst.rd, (self.pc -% 4) + (inst.imm << 12)),
+                    else => unreachable,
+                }
             },
         }
     }
@@ -140,3 +150,9 @@ pub const Cpu = struct {
         self.registers[rd] = value;
     }
 };
+
+fn hang() void {
+    const stdin = std.io.getStdIn().reader();
+    var buffer: [1]u8 = undefined;
+    _ = stdin.readAll(&buffer) catch {};
+}
