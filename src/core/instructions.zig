@@ -23,6 +23,10 @@ pub const Instr_Function = enum(u32) {
     Ori, // or immediate
     Andi, // and immediate
 
+    Slli,
+    Srli,
+    Srai,
+
     Add, // add
     Sub, // subtract
     Sll, // shift left logical

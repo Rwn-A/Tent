@@ -1,5 +1,5 @@
 const std = @import("std");
-const root = @import("root");
+const config = @import("config");
 
 // Functions for reading and writing from memory, not a full fledged MMU at all.
 
@@ -13,10 +13,10 @@ const MemoryError = error{
 pub const Memory = struct {
     const Self = @This();
 
-    pub const RomSize = 0x2000;
-    pub const RamSize = 0x800000;
+    pub const RomSize = config.rom_size;
+    pub const RamSize = config.ram_size;
 
-    pub const RomStart = 0x10000000;
+    pub const RomStart = config.rom_start;
     pub const RamStart = RomStart + RomSize;
 
     //0xe4 & 0xe5 were chosen so i can easily recognize un-initialized memory
@@ -24,7 +24,8 @@ pub const Memory = struct {
     ram: [RamSize]u8 = [_]u8{0xe5} ** RamSize,
 
     pub fn read(self: *Self, comptime T: type, address: u32) MemoryError!T {
-        if (address & 0b11 != 0) {
+        if ((address & (@alignOf(T) - 1)) != 0) {
+            std.log.err("unaligned read to {d}", .{address});
             return MemoryError.Unaligned;
         }
         if (address >= RomStart and address < RomStart + RomSize) {
@@ -35,12 +36,13 @@ pub const Memory = struct {
             const addr = address - RamStart;
             return std.mem.readVarInt(T, self.ram[addr .. addr + @sizeOf(T)], .little);
         }
-        std.log.err("Out of bounds read to {d}", .{address});
+        std.log.err("Out of bounds read to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
         return MemoryError.OutOfBounds;
     }
 
     pub fn write(self: *Self, comptime T: type, address: u32, value: T) MemoryError!void {
-        if (address & 0b11 != 0) {
+        if ((address & (@alignOf(T) - 1)) != 0) {
+            std.log.err("unaligned read to {d}", .{address});
             return MemoryError.Unaligned;
         }
         if (address >= RomStart and address < RomStart + RomSize) {
