@@ -1,6 +1,8 @@
 const std = @import("std");
 const root = @import("root");
 
+// Functions for reading and writing from memory, not a full fledged MMU at all.
+
 const MemoryError = error{
     OutOfBounds,
     Unaligned,
