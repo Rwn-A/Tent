@@ -31,11 +31,11 @@ pub const Cpu = struct {
     }
 
     pub fn run(self: *Self) !void {
-        var dt_tot: i128 = 0;
-        var dt_count: i128 = 0;
+        // var dt_tot: i128 = 0;
+        // var dt_count: i128 = 0;
         std.log.info("Starting CPU at 0x{x}\n", .{self.pc});
         while (true) {
-            const t0 = std.time.nanoTimestamp();
+            // const t0 = std.time.nanoTimestamp();
             std.log.debug("Fetching from 0x{x}", .{self.pc});
             const encoded_instruction = try self.fetch();
             std.log.debug("Fetched 0x{x}", .{encoded_instruction});
@@ -43,12 +43,12 @@ pub const Cpu = struct {
             std.log.debug("Decoded instruction {s}", .{decoded_instruction});
             try self.execute(decoded_instruction);
             std.log.debug("Executed instruction:\n    reg: {any}\n", .{self.registers});
-            const t1 = std.time.nanoTimestamp();
-            dt_tot += (t1 - t0);
-            dt_count += 1;
-            if (dt_count == 1000 * 1000) break;
+            //const t1 = std.time.nanoTimestamp();
+            //dt_tot += (t1 - t0);
+            //dt_count += 1;
+            //if (dt_count == 1000 * 1000) break;
         }
-        std.debug.print("{d}", .{@divTrunc(dt_tot, dt_count)});
+        //std.debug.print("{d}", .{@divTrunc(dt_tot, dt_count)});
     }
 
     fn fetch(self: *Self) !u32 {
