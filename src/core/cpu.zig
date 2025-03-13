@@ -56,6 +56,27 @@ pub const Cpu = struct {
                 switch (inst.function) {
                     .Add => self.register_write(inst.rd, self.registers[inst.rs1] +% self.registers[inst.rs2]),
                     .Sub => self.register_write(inst.rd, self.registers[inst.rs1] -% self.registers[inst.rs2]),
+                    .Sll => self.register_write(inst.rd, self.registers[inst.rs1] << @as(u5, @truncate(self.registers[inst.rs2]))),
+                    .Slt => {
+                        const a: i32 = @bitCast(self.registers[inst.rs1]);
+                        const b: i32 = @bitCast(self.registers[inst.rs2]);
+                        self.register_write(inst.rd, if (a < b) 1 else 0);
+                    },
+                    .Sltu => self.register_write(inst.rd, if (self.registers[inst.rs1] < self.registers[inst.rs2]) 1 else 0),
+                    .Xor => self.register_write(inst.rd, self.registers[inst.rs1] ^ self.registers[inst.rs2]),
+                    .Or => self.register_write(inst.rd, self.registers[inst.rs1] | self.registers[inst.rs2]),
+                    .And => self.register_write(inst.rd, self.registers[inst.rs1] & self.registers[inst.rs2]),
+                    .Srl => self.register_write(inst.rd, self.registers[inst.rs1] >> @as(u5, @truncate(self.registers[inst.rs2]))),
+                    .Sra => {
+                        const a: u32 = @bitCast(self.registers[inst.rs1]);
+                        const b: u32 = self.registers[inst.rs2];
+                        if (@as(i32, @bitCast(a)) < 0) {
+                            const shift_amount = @as(u5, @truncate((32 - b)));
+                            self.register_write(inst.rd, (a >> @as(u5, @truncate(b))) | (@as(u32, 1) << shift_amount));
+                        } else {
+                            self.register_write(inst.rd, (a >> @as(u5, @truncate(b))));
+                        }
+                    },
                     else => unreachable,
                 }
             },
@@ -73,14 +94,14 @@ pub const Cpu = struct {
                         const b: i32 = @bitCast(inst.imm);
                         self.register_write(inst.rd, if (a < b) 1 else 0);
                     },
-                    .Sltu => self.register_write(inst.rd, if (self.registers[inst.rs1] < inst.imm) 1 else 0),
+                    .Sltiu => self.register_write(inst.rd, if (self.registers[inst.rs1] < inst.imm) 1 else 0),
                     .Xori => self.register_write(inst.rd, self.registers[inst.rs1] ^ inst.imm),
                     .Ori => self.register_write(inst.rd, self.registers[inst.rs1] | inst.imm),
                     .Andi => self.register_write(inst.rd, self.registers[inst.rs1] & inst.imm),
                     .Ecall, .Ebreak => std.log.info("Tried to Ecall/Ebreak at 0x{x}", .{self.pc}),
                     .Jalr => {
                         self.register_write(inst.rd, self.pc);
-                        self.pc = value & ~@as(u32, 1); //ensures aligned jump
+                        self.pc = value;
                     },
                     else => unreachable,
                 }
@@ -97,6 +118,19 @@ pub const Cpu = struct {
                     .Bgeu => self.pc +%= if (self.registers[inst.rs1] >= self.registers[inst.rs2]) inst.imm - 4 else 0,
                     else => unreachable,
                 }
+            },
+            .S_type => |inst| {
+                switch (inst.function) {
+                    .Sw => try self.memory.write(u32, self.registers[inst.rs1] +% inst.imm, self.registers[inst.rs2]),
+                    .Sh => try self.memory.write(u16, self.registers[inst.rs1] +% inst.imm, @truncate(self.registers[inst.rs2])),
+                    .Sb => try self.memory.write(u8, self.registers[inst.rs1] +% inst.imm, @truncate(self.registers[inst.rs2])),
+                    else => unreachable,
+                }
+            },
+            .J_type => |inst| {
+                if (inst.function != .Jal) unreachable;
+                self.register_write(inst.rd, self.pc);
+                self.pc +%= inst.imm;
             },
         }
     }

@@ -72,10 +72,25 @@ pub const B_Type_Instr = struct {
     imm: u32,
 };
 
+pub const S_Type_Instr = struct {
+    function: Instr_Function,
+    rs1: u32,
+    rs2: u32,
+    imm: u32,
+};
+
+pub const J_Type_Instr = struct {
+    function: Instr_Function,
+    imm: u32,
+    rd: u32,
+};
+
 pub const Instruction = union(enum) {
     I_type: I_Type_Instr,
     R_type: R_Type_Instr,
     B_type: B_Type_Instr,
+    S_type: S_Type_Instr,
+    J_type: J_Type_Instr,
 
     pub fn format(self: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
@@ -90,6 +105,12 @@ pub const Instruction = union(enum) {
             .B_type => |inst| {
                 try writer.print("{s}, x{d}, x{d}, {d}", .{ @tagName(inst.function), inst.rs1, inst.rs2, @as(i32, @bitCast(inst.imm)) });
             },
+            .S_type => |inst| {
+                try writer.print("{s}, x{d}, x{d}, {d}", .{ @tagName(inst.function), inst.rs1, inst.rs2, @as(i32, @bitCast(inst.imm)) });
+            },
+            .J_type => |inst| {
+                try writer.print("{s}, x{d}, {d}", .{ @tagName(inst.function), inst.rd, @as(i32, @bitCast(inst.imm)) });
+            },
         }
     }
 };
@@ -97,8 +118,10 @@ pub const Instruction = union(enum) {
 pub fn decode(encoded_instruction: u32) DecodeError!Instruction {
     return switch (get_field(encoded_instruction, 0, 7)) {
         0x33 => .{ .R_type = try decode_R_type_instr(encoded_instruction) },
-        0x03, 0x67, 0x13, 0x73 => .{ .I_type = try decode_I_type_instr(encoded_instruction) },
         0x63 => .{ .B_type = try decode_B_type_instr(encoded_instruction) },
+        0x23 => .{ .S_type = try decode_S_type_instr(encoded_instruction) },
+        0x6F => .{ .J_type = try decode_J_type_instr(encoded_instruction) },
+        0x03, 0x67, 0x13, 0x73 => .{ .I_type = try decode_I_type_instr(encoded_instruction) },
         else => return DecodeError.UnknownInstruction,
     };
 }
@@ -134,6 +157,35 @@ fn decode_I_type_instr(encoded_instruction: u32) DecodeError!I_Type_Instr {
             else => return DecodeError.UnknownInstruction,
         },
         0x67 => .Jalr,
+        else => return DecodeError.UnknownInstruction,
+    };
+    return result;
+}
+
+fn decode_J_type_instr(encoded_instruction: u32) DecodeError!J_Type_Instr {
+    var result: J_Type_Instr = undefined;
+    result.rd = get_field(encoded_instruction, 7, 5);
+    const imm20 = get_field(encoded_instruction, 31, 1);
+    const imm10_1 = get_field(encoded_instruction, 21, 10);
+    const imm11 = get_field(encoded_instruction, 20, 1);
+    const imm19_12 = get_field(encoded_instruction, 12, 8);
+    result.imm = sext((imm20 << 19) | (imm19_12 << 12) | (imm10_1 << 1) | (imm11 << 11), 20);
+    result.function = .Jal;
+    return result;
+}
+
+fn decode_S_type_instr(encoded_instruction: u32) DecodeError!S_Type_Instr {
+    var result: S_Type_Instr = undefined;
+    const funct3 = get_field(encoded_instruction, 12, 3);
+    result.rs1 = get_field(encoded_instruction, 15, 5);
+    result.rs2 = get_field(encoded_instruction, 20, 5);
+    const imm11_5 = get_field(encoded_instruction, 25, 7);
+    const imm4_0 = get_field(encoded_instruction, 7, 5);
+    result.imm = sext(imm11_5 << 5 | imm4_0, 12);
+    result.function = switch (funct3) {
+        0b000 => .Sb,
+        0b001 => .Sh,
+        0b010 => .Sw,
         else => return DecodeError.UnknownInstruction,
     };
     return result;

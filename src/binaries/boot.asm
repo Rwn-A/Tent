@@ -2,6 +2,8 @@
     .global _start
 
 _start:
+    jal loop
+    sw x10, -10(x5)
     addi x5, x0, 0      # x5 = counter (start at 0)
     
 loop:
