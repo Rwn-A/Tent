@@ -15,6 +15,10 @@ pub fn build(b: *std.Build) void {
         .name = "Tent",
         .root_source_file = b.path("src/main.zig"),
         .target = b.graph.host,
+        // .target = b.resolveTargetQuery(.{
+        //     .os_tag = .windows,
+        // }),
+        // .optimize = .ReleaseFast,
     });
 
     exe.root_module.addAnonymousImport("boot", .{

@@ -31,37 +31,24 @@ pub const Cpu = struct {
     }
 
     pub fn run(self: *Self) !void {
-        // var dt_tot: i128 = 0;
-        // var dt_count: i128 = 0;
-        std.log.info("Starting CPU at 0x{x}\n", .{self.pc});
         while (true) {
-            // const t0 = std.time.nanoTimestamp();
-            std.log.debug("Fetching from 0x{x}", .{self.pc});
             const encoded_instruction = try self.fetch();
-            std.log.debug("Fetched 0x{x}", .{encoded_instruction});
             const decoded_instruction = try self.decode(encoded_instruction);
-            std.log.debug("Decoded instruction {s}", .{decoded_instruction});
             try self.execute(decoded_instruction);
-            std.log.debug("Executed instruction:\n    reg: {any}\n", .{self.registers});
-            //const t1 = std.time.nanoTimestamp();
-            //dt_tot += (t1 - t0);
-            //dt_count += 1;
-            //if (dt_count == 1000 * 1000) break;
         }
-        //std.debug.print("{d}", .{@divTrunc(dt_tot, dt_count)});
     }
 
-    fn fetch(self: *Self) !u32 {
+    pub fn fetch(self: *Self) !u32 {
         defer self.pc += 4;
         return self.memory.read(u32, self.pc);
     }
 
-    fn decode(self: *Self, encoded_instruction: u32) !Instruction {
+    pub fn decode(self: *Self, encoded_instruction: u32) !Instruction {
         _ = self;
         return instructions.decode(encoded_instruction);
     }
 
-    fn execute(self: *Self, inst_u: Instruction) !void {
+    pub fn execute(self: *Self, inst_u: Instruction) !void {
         switch (inst_u) {
             .R_type => |inst| {
                 switch (inst.function) {
@@ -106,6 +93,18 @@ pub const Cpu = struct {
                         self.register_write(inst.rd, if (a < b) 1 else 0);
                     },
                     .Sltiu => self.register_write(inst.rd, if (self.registers[inst.rs1] < inst.imm) 1 else 0),
+                    .Slli => self.register_write(inst.rd, self.registers[inst.rs1] << @as(u5, @truncate(inst.imm))),
+                    .Srli => self.register_write(inst.rd, self.registers[inst.rs1] >> @as(u5, @truncate(inst.imm))),
+                    .Srai => {
+                        const a: u32 = @bitCast(self.registers[inst.rs1]);
+                        const b: u32 = inst.imm;
+                        if (@as(i32, @bitCast(a)) < 0) {
+                            const shift_amount = @as(u5, @truncate((32 - b)));
+                            self.register_write(inst.rd, (a >> @as(u5, @truncate(b))) | (@as(u32, 1) << shift_amount));
+                        } else {
+                            self.register_write(inst.rd, (a >> @as(u5, @truncate(b))));
+                        }
+                    },
                     .Xori => self.register_write(inst.rd, self.registers[inst.rs1] ^ inst.imm),
                     .Ori => self.register_write(inst.rd, self.registers[inst.rs1] | inst.imm),
                     .Andi => self.register_write(inst.rd, self.registers[inst.rs1] & inst.imm),
@@ -158,9 +157,3 @@ pub const Cpu = struct {
         self.registers[rd] = value;
     }
 };
-
-fn hang() void {
-    const stdin = std.io.getStdIn().reader();
-    var buffer: [1]u8 = undefined;
-    _ = stdin.readAll(&buffer) catch {};
-}

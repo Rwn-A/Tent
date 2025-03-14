@@ -161,6 +161,18 @@ fn decode_I_type_instr(encoded_instruction: u32) DecodeError!I_Type_Instr {
             0b100 => .Xori,
             0b110 => .Ori,
             0b111 => .Andi,
+            0b001 => blk: {
+                result.imm = zext(get_field(encoded_instruction, 20, 5), 5);
+                break :blk .Slli;
+            },
+            0b101 => blk: {
+                result.imm = zext(get_field(encoded_instruction, 20, 5), 5);
+                break :blk switch (get_field(encoded_instruction, 30, 1)) {
+                    0b1 => .Srai,
+                    0b0 => .Srli,
+                    else => return DecodeError.UnknownInstruction,
+                };
+            },
             else => return DecodeError.UnknownInstruction,
         },
         0x03 => switch (funct3) {
