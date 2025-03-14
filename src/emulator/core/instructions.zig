@@ -24,6 +24,13 @@ pub const Instr_Function = enum(u32) {
     Srli,
     Srai,
 
+    Csrrw,
+    Csrrs,
+    Csrrc,
+    Csrrwi,
+    Csrrsi,
+    Csrrci,
+
     Add, // add
     Sub, // subtract
     Sll, // shift left logical
@@ -180,10 +187,22 @@ fn decode_I_type_instr(encoded_instruction: u32) DecodeError!I_Type_Instr {
             0b101 => .Lhu,
             else => return DecodeError.UnknownInstruction,
         },
-        0x73 => switch (funct3) {
-            0b000 => .Ecall,
-            0b001 => .Ebreak,
-            else => return DecodeError.UnknownInstruction,
+        0x73 => blk: {
+            result.imm = zext(get_field(encoded_instruction, 20, 12), 12);
+            break :blk switch (funct3) {
+                0b000 => switch (get_field(encoded_instruction, 20, 1)) {
+                    0b0 => .Ecall,
+                    0b1 => .Ebreak,
+                    else => return DecodeError.UnknownInstruction,
+                },
+                0b001 => .Csrrw,
+                0b010 => .Csrrs,
+                0b011 => .Csrrc,
+                0b101 => .Csrrwi,
+                0b110 => .Csrrsi,
+                0b111 => .Csrrci,
+                else => return DecodeError.UnknownInstruction,
+            };
         },
         0x67 => .Jalr,
         else => return DecodeError.UnknownInstruction,

@@ -5,16 +5,25 @@ const Instruction = @import("instructions.zig").Instruction;
 const sext = @import("instructions.zig").sext;
 const zext = @import("instructions.zig").zext;
 const Memory = @import("memory.zig").Memory;
+const CSR = @import("csr.zig").CSR;
 
 // Contains the code to execute instructions and wrappers for fetch and decode
 // This can be considered the entry point of the library.
+
+pub const Privilege = enum {
+    Machine,
+    Supervisor,
+    User,
+};
 
 pub const Cpu = struct {
     const Self = @This();
 
     memory: Memory = Memory{},
+    csr: CSR = CSR{},
     registers: [32]u32 = [_]u32{0} ** 32,
     pc: u32 = Memory.RomStart,
+    current_privilege: Privilege = .Machine,
 
     pub fn reset(self: *Self) void {
         self.registers = [_]u32{0} ** 32;
@@ -43,6 +52,19 @@ pub const Cpu = struct {
             try self.execute(decoded_instruction);
             wait();
         }
+    }
+
+    pub fn trap(self: *Self, cause: u32) void {
+        self.csr.mepc = self.pc;
+        self.csr.mcause = cause;
+        const isInterrupt = cause & 0x8000_0000;
+        if (isInterrupt == 0) {
+            const index = cause & 0x7fff_ffff;
+            self.pc = (self.csr.mtvec & 0xfffffffc) + (index * 4);
+        } else {
+            self.pc = self.csr.mtvec;
+        }
+        self.current_privilege = Privilege.Machine;
     }
 
     fn fetch(self: *Self) !u32 {
@@ -115,11 +137,39 @@ pub const Cpu = struct {
                     .Xori => self.register_write(inst.rd, self.registers[inst.rs1] ^ inst.imm),
                     .Ori => self.register_write(inst.rd, self.registers[inst.rs1] | inst.imm),
                     .Andi => self.register_write(inst.rd, self.registers[inst.rs1] & inst.imm),
-                    .Ecall, .Ebreak => std.log.info("Tried to Ecall/Ebreak at 0x{x}", .{self.pc}),
+                    .Ebreak => std.log.info("Tried to Ebreak at 0x{x}", .{self.pc}),
+                    .Ecall => {
+                        switch (self.current_privilege) {
+                            .Machine => self.trap(11),
+                            .Supervisor => self.trap(9),
+                            .User => self.trap(8),
+                        }
+                    },
                     .Jalr => {
                         self.register_write(inst.rd, self.pc);
                         self.pc = value & ~@as(u32, 1);
                     },
+                    .Csrrw, .Csrrwi => {
+                        const val = if (inst.function == .Csrrwi) inst.rs1 else self.registers[inst.rs1];
+                        if (inst.rd != 0) { //not supposed to read if rd is 0
+                            self.register_write(inst.rd, try self.csr.read_csr(self.current_privilege, inst.imm));
+                        }
+                        try self.csr.write_csr(self.current_privilege, inst.imm, val);
+                    }, //for csrrs and csrrc if rs1 is 0 it is supposed to read but not write
+                    .Csrrs, .Csrrsi => blk: {
+                        const val = if (inst.function == .Csrrsi) inst.rs1 else self.registers[inst.rs1];
+                        const csr_old = try self.csr.read_csr(self.current_privilege, inst.imm);
+                        self.register_write(inst.rd, csr_old);
+                        if (inst.rs1 == 0) break :blk;
+                        try self.csr.write_csr(self.current_privilege, inst.imm, csr_old | val);
+                    },
+                    .Csrrc, .Csrrci => blk: {
+                        const val = if (inst.function == .Csrrci) inst.rs1 else self.registers[inst.rs1];
+                        const csr_old = try self.csr.read_csr(self.current_privilege, inst.imm);
+                        self.register_write(inst.rd, csr_old);
+                        if (inst.rs1 == 0) break :blk;
+                        try self.csr.write_csr(self.current_privilege, inst.imm, csr_old & ~val);
+                    }, //for all these i instructions rs1 is actually an immediate.
                     else => unreachable,
                 }
             },

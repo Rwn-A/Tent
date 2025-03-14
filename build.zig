@@ -60,7 +60,7 @@ pub fn build(b: *std.Build) !void {
         //Convert bootloader to flat binary
         const objcopy = b.addObjCopy(bootloader.getEmittedBin(), .{
             .format = .bin,
-            .only_section = ".text",
+            //.only_section = ".text",
         });
         const bootloader_bin = objcopy.getOutput();
 
@@ -120,10 +120,18 @@ fn linker_script(allocator: std.mem.Allocator, rom_start: u32, rom_size: u32, ra
         \\
         \\SECTIONS
         \\{{
-        \\    /* ROM Section (Text Section) */
+        \\   .reset : {{
+        \\      *(.reset)
+        \\   }} > ROM
+        \\
+        \\   .vect : {{
+        \\      *(.vect)
+        \\    }} > ROM
+        \\
         \\    .text : {{
         \\        *(.text)                /* Include all text sections (.text) */
         \\    }} > ROM
+        \\
         \\
         \\    /* Data Section (Initialized Data) */
         \\    .data : {{
