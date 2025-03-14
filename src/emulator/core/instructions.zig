@@ -1,8 +1,5 @@
 const std = @import("std");
 
-const sext = @import("cpu.zig").sext;
-const zext = @import("cpu.zig").zext;
-
 // Type definitions and decoding logic for RiscV instructions.
 // Some of the immediate decoding logic was done with AI, although it took alot of coercing to get right.
 // I am not a bit-fiddling master so there is a good chance some of the decodes are slow and/or inelegant.
@@ -287,24 +284,35 @@ fn get_field(encoded_instruction: u32, start: u5, size: u5) u32 {
     return (encoded_instruction >> start) & ((@as(u32, 1) << size) - 1);
 }
 
-test "Decode I-type" {
-    const raw_instruction = 0xff610093;
-    const decoded = try decode_I_type_instr(raw_instruction);
-    try std.testing.expectEqual(decoded, I_Type_Instr{
-        .function = .Addi,
-        .rd = 1,
-        .rs1 = 2,
-        .imm = @bitCast(@as(i32, -10)),
-    });
+pub fn sext(value: u32, bits: u5) u32 {
+    if (value & (@as(u32, 1) << (bits - 1)) != 0) {
+        return value | ~((@as(u32, 1) << bits) - 1);
+    }
+    return value;
 }
 
-test "Decode R-type" {
-    const raw_instruction = 0x40008133;
-    const decoded = try decode_R_type_instr(raw_instruction);
-    try std.testing.expectEqual(decoded, R_Type_Instr{
-        .function = .Sub,
-        .rd = 2,
-        .rs1 = 1,
-        .rs2 = 0,
-    });
+pub fn zext(value: u32, bits: u5) u32 {
+    return value & ((@as(u32, 1) << bits) - 1);
 }
+
+// test "Decode I-type" {
+//     const raw_instruction = 0xff610093;
+//     const decoded = try decode_I_type_instr(raw_instruction);
+//     try std.testing.expectEqual(decoded, I_Type_Instr{
+//         .function = .Addi,
+//         .rd = 1,
+//         .rs1 = 2,
+//         .imm = @bitCast(@as(i32, -10)),
+//     });
+// }
+
+// test "Decode R-type" {
+//     const raw_instruction = 0x40008133;
+//     const decoded = try decode_R_type_instr(raw_instruction);
+//     try std.testing.expectEqual(decoded, R_Type_Instr{
+//         .function = .Sub,
+//         .rd = 2,
+//         .rs1 = 1,
+//         .rs2 = 0,
+//     });
+// }

@@ -2,21 +2,12 @@ const std = @import("std");
 
 const instructions = @import("instructions.zig");
 const Instruction = @import("instructions.zig").Instruction;
+const sext = @import("instructions.zig").sext;
+const zext = @import("instructions.zig").zext;
 const Memory = @import("memory.zig").Memory;
 
 // Contains the code to execute instructions and wrappers for fetch and decode
 // This can be considered the entry point of the library.
-
-pub fn sext(value: u32, bits: u5) u32 {
-    if (value & (@as(u32, 1) << (bits - 1)) != 0) {
-        return value | ~((@as(u32, 1) << bits) - 1);
-    }
-    return value;
-}
-
-pub fn zext(value: u32, bits: u5) u32 {
-    return value & ((@as(u32, 1) << bits) - 1);
-}
 
 pub const Cpu = struct {
     const Self = @This();
@@ -38,17 +29,33 @@ pub const Cpu = struct {
         }
     }
 
-    pub fn fetch(self: *Self) !u32 {
+    //for debugging
+    pub fn run_step_through(self: *Self) !void {
+        std.log.info("Starting CPU at 0x{x}\n", .{self.pc});
+        while (true) {
+            std.log.debug("Fetching from 0x{x}", .{self.pc});
+            const encoded_instruction = try self.fetch();
+            wait();
+            std.log.debug("Decoding 0x{x}", .{encoded_instruction});
+            const decoded_instruction = try self.decode(encoded_instruction);
+            wait();
+            std.log.debug("Executing {s}", .{decoded_instruction});
+            try self.execute(decoded_instruction);
+            wait();
+        }
+    }
+
+    fn fetch(self: *Self) !u32 {
         defer self.pc += 4;
         return self.memory.read(u32, self.pc);
     }
 
-    pub fn decode(self: *Self, encoded_instruction: u32) !Instruction {
+    fn decode(self: *Self, encoded_instruction: u32) !Instruction {
         _ = self;
         return instructions.decode(encoded_instruction);
     }
 
-    pub fn execute(self: *Self, inst_u: Instruction) !void {
+    fn execute(self: *Self, inst_u: Instruction) !void {
         switch (inst_u) {
             .R_type => |inst| {
                 switch (inst.function) {
@@ -157,3 +164,35 @@ pub const Cpu = struct {
         self.registers[rd] = value;
     }
 };
+
+//for debugging, used to step through the cpu execution
+fn wait() void {
+    const stdin = std.io.getStdIn().reader();
+    var buffer: [1]u8 = undefined;
+    _ = stdin.readAll(&buffer) catch {};
+}
+
+test "clock speed" {
+    const code = @embedFile("bootbinary");
+    var cpu: Cpu = .{};
+    std.mem.copyForwards(u8, &cpu.memory.rom, code);
+
+    var dt_tot: i128 = 0;
+    var dt_count: i128 = 0;
+    const max_iter = 1000 * 1000;
+    while (true) {
+        const t0 = std.time.nanoTimestamp();
+
+        const encoded_instruction = try cpu.fetch();
+        const decoded_instruction = try cpu.decode(encoded_instruction);
+        try cpu.execute(decoded_instruction);
+
+        const t1 = std.time.nanoTimestamp();
+        dt_tot += (t1 - t0);
+        dt_count += 1;
+
+        if (dt_count == max_iter) break;
+    }
+    const clock_speed: f64 = (1 / (@as(f64, @floatFromInt(dt_tot)) / @as(f64, @floatFromInt(dt_count))));
+    std.debug.print("{d:.6}GHz", .{clock_speed});
+}

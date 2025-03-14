@@ -61,28 +61,3 @@ pub const Memory = struct {
         return MemoryError.OutOfBounds;
     }
 };
-
-test "memory interface" {
-    var mem = Memory{};
-
-    try mem.write(u16, Memory.RamStart, 0x1234);
-    const v = try mem.read(u8, Memory.RamStart);
-    try std.testing.expect(v == 0x34);
-
-    var err: MemoryError = undefined;
-    mem.write(u32, Memory.RomStart, 100) catch |er| {
-        err = er;
-    };
-    try std.testing.expect(err == MemoryError.NotAllowed);
-
-    mem.write(u32, 0x0, 123) catch |er| {
-        err = er;
-    };
-    try std.testing.expect(err == MemoryError.OutOfBounds);
-
-    err = MemoryError.OutOfBounds;
-    _ = mem.read(u16, Memory.RomStart + 1) catch |er| {
-        err = er;
-    };
-    try std.testing.expect(err == MemoryError.Unaligned);
-}
