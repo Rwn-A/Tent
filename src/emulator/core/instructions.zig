@@ -20,16 +20,16 @@ pub const Instr_Function = enum(u32) {
     Ori, // or immediate
     Andi, // and immediate
 
-    Slli,
-    Srli,
-    Srai,
+    Slli, //shift left immeddiate
+    Srli, //shift right immeddiate logical
+    Srai, //shift right immeddiate arithmetic
 
-    Csrrw,
-    Csrrs,
-    Csrrc,
-    Csrrwi,
-    Csrrsi,
-    Csrrci,
+    Csrrw, //Read and write to CSR
+    Csrrs, //Read and write to CSR
+    Csrrc, //Read and write to CSR
+    Csrrwi, //Read and write to CSR
+    Csrrsi, //Read and write to CSR
+    Csrrci, //Read and write to CSR
 
     Add, // add
     Sub, // subtract
@@ -62,6 +62,9 @@ pub const Instr_Function = enum(u32) {
 
     Lui, // load upper immediate
     Auipc, // add upper immediate
+
+    //Priviledged
+    Mret, //return from trap
 };
 
 pub const I_Type_Instr = struct {
@@ -152,11 +155,19 @@ pub fn decode(encoded_instruction: u32) DecodeError!Instruction {
 
 fn decode_I_type_instr(encoded_instruction: u32) DecodeError!I_Type_Instr {
     var result: I_Type_Instr = undefined;
+
+    //mret is always this, none of the fields matter
+    if (encoded_instruction == 0x30200073) {
+        result.function = .Mret;
+        return result;
+    }
+
     const opc = get_field(encoded_instruction, 0, 7);
     const funct3 = get_field(encoded_instruction, 12, 3);
     result.rd = get_field(encoded_instruction, 7, 5);
     result.rs1 = get_field(encoded_instruction, 15, 5);
     result.imm = sext(get_field(encoded_instruction, 20, 12), 12);
+
     result.function = switch (opc) {
         0x13 => switch (funct3) {
             0b000 => .Addi,
@@ -313,25 +324,3 @@ pub fn sext(value: u32, bits: u5) u32 {
 pub fn zext(value: u32, bits: u5) u32 {
     return value & ((@as(u32, 1) << bits) - 1);
 }
-
-// test "Decode I-type" {
-//     const raw_instruction = 0xff610093;
-//     const decoded = try decode_I_type_instr(raw_instruction);
-//     try std.testing.expectEqual(decoded, I_Type_Instr{
-//         .function = .Addi,
-//         .rd = 1,
-//         .rs1 = 2,
-//         .imm = @bitCast(@as(i32, -10)),
-//     });
-// }
-
-// test "Decode R-type" {
-//     const raw_instruction = 0x40008133;
-//     const decoded = try decode_R_type_instr(raw_instruction);
-//     try std.testing.expectEqual(decoded, R_Type_Instr{
-//         .function = .Sub,
-//         .rd = 2,
-//         .rs1 = 1,
-//         .rs2 = 0,
-//     });
-// }

@@ -27,8 +27,8 @@ export fn vector_table() linksection(".vect") callconv(.naked) noreturn {
 
 export fn trapDefault() void {
     asm volatile (
-        \\li x20, 25
         \\ebreak
+        \\mret
     );
 }
 
@@ -70,16 +70,14 @@ export fn trapEcall() void {
     }
 
     asm volatile (
-        \\ csrr a0, mepc
-        \\ jr a0
+        \\ mret
     );
 }
 
 export fn main() void {
-    asm volatile (
-        \\ li a7, 40
-        \\ ecall
-    );
-    const addr: *i32 = @ptrFromInt(0x802000);
-    addr.* = 2;
+    const addr: *i32 = @ptrFromInt(0x00000004);
+    addr.* = 39;
+    asm volatile ("ebreak");
+    const addr2: *i32 = @ptrFromInt(0x802000);
+    addr2.* = 2;
 }

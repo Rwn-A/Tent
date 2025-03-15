@@ -3,16 +3,11 @@ const config = @import("config");
 
 // Functions for reading and writing from memory, not a full fledged MMU at all.
 
-const MemoryError = error{
-    OutOfBounds,
-    Unaligned,
-    NotAllowed,
-};
-
 //I think this should do wrap-around as per the spec, but for debugging I want to error on out of bounds
 pub const Memory = struct {
     const Self = @This();
 
+    //these constants are used to check where an address wants to read from
     pub const VecTableSize = config.vec_table_size;
 
     pub const RomSize = config.rom_size;
@@ -23,6 +18,16 @@ pub const Memory = struct {
 
     pub const MmioSize = config.mmio_size;
     pub const MmioStart = config.mmio_start;
+
+    //load and store have different errors because they have a different mcause value
+    pub const MemoryError = error{
+        StoreOutOfBounds,
+        StoreUnaligned,
+        StoreNotAllowed,
+        LoadOutOfBounds,
+        LoadUnaligned,
+        LoadNotAllowed,
+    };
 
     //0xe4 & 0xe5 were chosen so i can easily recognize un-initialized memory
     rom: [RomSize]u8 = [_]u8{0xe4} ** RomSize,
@@ -35,7 +40,7 @@ pub const Memory = struct {
     pub fn read(self: *Self, comptime T: type, address: u32) MemoryError!T {
         if ((address & (@alignOf(T) - 1)) != 0) {
             std.log.err("unaligned read to {d}", .{address});
-            return MemoryError.Unaligned;
+            return MemoryError.LoadUnaligned;
         }
         if (address_in_range(address, RomStart, RomSize)) {
             const addr = address - RomStart;
@@ -51,16 +56,16 @@ pub const Memory = struct {
             return @intCast(buf[0]);
         }
         std.log.err("Out of bounds read to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
-        return MemoryError.OutOfBounds;
+        return MemoryError.LoadOutOfBounds;
     }
 
     pub fn write(self: *Self, comptime T: type, address: u32, value: T) MemoryError!void {
         if ((address & (@alignOf(T) - 1)) != 0) {
             std.log.err("unaligned read to {d}", .{address});
-            return MemoryError.Unaligned;
+            return MemoryError.StoreUnaligned;
         }
         if (address_in_range(address, RomStart, RomSize)) {
-            return MemoryError.NotAllowed;
+            return MemoryError.StoreNotAllowed;
         }
         if (address_in_range(address, RamStart, RamSize)) {
             const addr = address - RamStart;
@@ -73,10 +78,11 @@ pub const Memory = struct {
         }
         if (address_in_range(address, MmioStart, MmioSize)) {
             if (address == MmioStart) std.process.exit(@intCast(value)); //our way of exiting emulator for now
-            std.debug.print("{any}", .{value});
+            std.debug.print("{any}\n", .{value});
             return;
         }
+
         std.log.err("Out of bounds write to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
-        return MemoryError.OutOfBounds;
+        return MemoryError.StoreOutOfBounds;
     }
 };

@@ -1,4 +1,5 @@
 const std = @import("std");
+const config = @import("config");
 
 const instructions = @import("instructions.zig");
 const Instruction = @import("instructions.zig").Instruction;
@@ -10,16 +11,51 @@ const CSR = @import("csr.zig").CSR;
 // Contains the code to execute instructions and wrappers for fetch and decode
 // This can be considered the entry point of the library.
 
-pub const Privilege = enum {
-    Machine,
-    Supervisor,
-    User,
+//The number here is the bits stored in mstatus for previous priviledge
+pub const Privilege = enum(u8) {
+    Machine = 0b00,
+    Supervisor = 0b01,
+    User = 0b10,
+};
+
+//Order matters here, the cause is used as an offset into the vector table
+pub const TrapCause = enum(u32) {
+    InstructionAddressMisaligned,
+    InstructionAccessFault,
+    IllegalInstruction,
+    Breakpoint,
+    LoadAddressMisaligned,
+    LoadAccessFault,
+    StoreAddressMisaligned,
+    StoreAccessFault,
+    EnvironmentCallFromUMode,
+    EnvironmentCallFromSMode,
+    Reserved10,
+    EnvironmentCallFromMMode,
+    InstructionPageFault,
+    LoadPageFault,
+    Reserved14,
+    StorePageFault,
+
+    //Interupts (have an extra bit set indicating interupt hence the or)
+    UserSoftwareInterrupt = 0x80000000 | 0,
+    SupervisorSoftwareInterrupt = 0x80000000 | 1,
+    ReservedSoftInt2 = 0x80000000 | 2,
+    MachineSoftwareInterrupt = 0x80000000 | 3,
+    UserTimerInterrupt = 0x80000000 | 4,
+    SupervisorTimerInterrupt = 0x80000000 | 5,
+    ReservedTimerInt6 = 0x80000000 | 6,
+    MachineTimerInterrupt = 0x80000000 | 7,
+    UserExternalInterrupt = 0x80000000 | 8,
+    SupervisorExternalInterrupt = 0x80000000 | 9,
+    ReservedExtInt10 = 0x80000000 | 10,
+    MachineExternalInterrupt = 0x80000000 | 11,
 };
 
 pub const Cpu = struct {
     const Self = @This();
 
-    const DefaultPC = Memory.RomStart + Memory.VecTableSize;
+    const DefaultPC = Memory.RomStart + Memory.VecTableSize; //_start is placed after vector table by linker
 
     memory: Memory = Memory{},
     csr: CSR = CSR{},
@@ -30,19 +66,36 @@ pub const Cpu = struct {
     pub fn reset(self: *Self) void {
         self.registers = [_]u32{0} ** 32;
         self.pc = DefaultPC;
+        self.csr.write_mstatus(.Mie, 1); //enable interupts
     }
 
     pub fn run(self: *Self) !void {
-        while (true) {
-            const encoded_instruction = try self.fetch();
-            const decoded_instruction = try self.decode(encoded_instruction);
-            try self.execute(decoded_instruction);
+        main_loop: while (true) {
+            const encoded_instruction = self.fetch() catch {
+                self.trap(.InstructionAccessFault);
+                continue :main_loop;
+            };
+            const decoded_instruction = self.decode(encoded_instruction) catch {
+                self.trap(.IllegalInstruction);
+                continue :main_loop;
+            };
+            self.execute(decoded_instruction) catch |e| {
+                switch (e) {
+                    CSR.CSRError.NotAllowed => self.trap(.IllegalInstruction),
+                    Memory.MemoryError.LoadNotAllowed => self.trap(.LoadAccessFault),
+                    Memory.MemoryError.LoadUnaligned => self.trap(.LoadAddressMisaligned),
+                    Memory.MemoryError.LoadOutOfBounds => self.trap(.LoadAccessFault),
+                    Memory.MemoryError.StoreNotAllowed => self.trap(.StoreAccessFault),
+                    Memory.MemoryError.StoreUnaligned => self.trap(.StoreAddressMisaligned),
+                    Memory.MemoryError.StoreOutOfBounds => self.trap(.StoreAccessFault),
+                }
+                continue :main_loop;
+            };
         }
     }
 
     //for debugging
     pub fn run_step_through(self: *Self) !void {
-        std.log.info("Starting CPU at 0x{x}\n", .{self.pc});
         while (true) {
             std.log.debug("Fetching from 0x{x}", .{self.pc});
             const encoded_instruction = try self.fetch();
@@ -56,15 +109,23 @@ pub const Cpu = struct {
         }
     }
 
-    pub fn trap(self: *Self, cause: u32) void {
+    pub fn trap(self: *Self, cause: TrapCause) void {
+        //save the old pc so we can return, and set the cause so we jump to the right handler
+        const cause_num = @intFromEnum(cause);
         self.csr.mepc = self.pc;
-        self.csr.mcause = cause;
-        const isInterrupt = cause & 0x8000_0000;
-        if (isInterrupt == 0) {
-            const index = cause & 0x7fff_ffff;
+        self.csr.mcause = cause_num;
+
+        //save mstatus fields right now this is kinda useless for us but it makes it more spec compliant
+        self.csr.write_mstatus(.Mpp, @intFromEnum(self.current_privilege));
+        self.csr.write_mstatus(.Mpie, self.csr.read_mstatus(.Mie));
+        self.csr.write_mstatus(.Mie, 0);
+
+        const isInterrupt = cause_num & 0x8000_0000 == 1; //interupt has a special bit set
+        if (!isInterrupt) {
+            const index = cause_num & 0x7fff_ffff;
             self.pc = (self.csr.mtvec & 0xfffffffc) + (index * 4);
         } else {
-            self.pc = self.csr.mtvec;
+            self.pc = self.csr.mtvec; //we dont really have interupt handlers so this is placeholder
         }
         self.current_privilege = Privilege.Machine;
     }
@@ -139,13 +200,34 @@ pub const Cpu = struct {
                     .Xori => self.register_write(inst.rd, self.registers[inst.rs1] ^ inst.imm),
                     .Ori => self.register_write(inst.rd, self.registers[inst.rs1] | inst.imm),
                     .Andi => self.register_write(inst.rd, self.registers[inst.rs1] & inst.imm),
-                    .Ebreak => std.log.info("Tried to Ebreak at 0x{x}", .{self.pc}),
+                    .Ebreak => {
+                        std.log.debug("---------------Ebreak--------------\n", .{});
+                        std.log.debug("pc: 0x{x}", .{self.pc});
+                        std.log.debug("registers: {any}", .{self.registers});
+                        std.log.debug("csrs: mcause: {s}, mepc: 0x{x}, mtvec: {d}, mtval: {d}", .{
+                            @tagName(@as(TrapCause, @enumFromInt(self.csr.mcause))),
+                            self.csr.mepc,
+                            self.csr.mtvec,
+                            self.csr.mtval,
+                        });
+                        std.log.debug("mstatus: mpp: {s}, mie: {d}, mpie: {d}\n", .{
+                            @tagName(@as(Privilege, @enumFromInt(self.csr.read_mstatus(.Mpp)))),
+                            self.csr.read_mstatus(.Mie),
+                            self.csr.read_mstatus(.Mpie),
+                        });
+                        std.log.debug("--------------EndEbreak------------", .{});
+                    },
                     .Ecall => {
                         switch (self.current_privilege) {
-                            .Machine => self.trap(11),
-                            .Supervisor => self.trap(9),
-                            .User => self.trap(8),
+                            .Machine => self.trap(.EnvironmentCallFromMMode),
+                            .Supervisor => self.trap(.EnvironmentCallFromSMode),
+                            .User => self.trap(.EnvironmentCallFromUMode),
                         }
+                    },
+                    .Mret => {
+                        self.pc = self.csr.mepc;
+                        self.current_privilege = @enumFromInt(self.csr.read_mstatus(.Mpp));
+                        self.csr.write_mstatus(.Mie, self.csr.read_mstatus(.Mpie));
                     },
                     .Jalr => {
                         self.register_write(inst.rd, self.pc);
@@ -178,6 +260,7 @@ pub const Cpu = struct {
             .B_type => |inst| {
                 const a: i32 = @bitCast(self.registers[inst.rs1]);
                 const b: i32 = @bitCast(self.registers[inst.rs2]);
+                //the - 4 is because the PC is already pointing at the next instruction
                 switch (inst.function) {
                     .Blt => self.pc +%= if (a < b) inst.imm -% 4 else 0,
                     .Beq => self.pc +%= if (a == b) inst.imm -% 4 else 0,
