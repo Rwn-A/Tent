@@ -8,73 +8,30 @@ export fn _start() callconv(.naked) noreturn {
     );
 }
 
-export fn vector_table() linksection(".vect") callconv(.naked) noreturn {
+//default vector table kernel overwrites with its own at a different address
+export fn default_vector_table() linksection(".vect") callconv(.naked) noreturn {
     asm volatile (
-        \\ .org  vector_table + 0*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 1*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 3*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 5*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 7*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 9*4
-        \\ jal   zero, trapDefault
-        \\ .org  vector_table + 11*4
-        \\ jal   zero, trapEcall
+        \\ .org  default_vector_table + 0*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 1*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 3*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 5*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 7*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 9*4
+        \\ jal   zero, boot_trap_default
+        \\ .org  default_vector_table + 11*4
+        \\ jal   zero, boot_trap_default
     );
 }
 
-export fn trapDefault() void {
+//default handler does nothing
+export fn boot_trap_default() void {
     asm volatile (
         \\ebreak
         \\mret
-    );
-}
-
-export fn trapEcall() void {
-    var sys_number: u32 = 0;
-    var arg1: u32 = 0;
-    var arg2: u32 = 0;
-    var arg3: u32 = 0;
-    var arg4: u32 = 0;
-    var arg5: u32 = 0;
-    var arg6: u32 = 0;
-    var arg7: u32 = 0;
-
-    asm volatile (
-        \\ mv %[sys_number], a7
-        \\ mv %[arg1], a0;         
-        \\ mv %[arg2], a1        
-        \\ mv %[arg3], a2         
-        \\ mv %[arg4], a3        
-        \\ mv %[arg5], a4        
-        \\ mv %[arg6], a5 
-        \\ mv %[arg7], a6
-        : [sys_number] "=r" (sys_number),
-          [arg1] "=r" (arg1),
-          [arg2] "=r" (arg2),
-          [arg3] "=r" (arg3),
-          [arg4] "=r" (arg4),
-          [arg5] "=r" (arg5),
-          [arg6] "=r" (arg6),
-          [arg7] "=r" (arg7),
-    );
-
-    switch (sys_number) {
-        1 => {
-            asm volatile (
-                \\la t0, mmio_start
-                \\li t1, 30
-                \\sb t1, 0(t0)
-            );
-        },
-        else => {},
-    }
-
-    asm volatile (
-        \\ mret
     );
 }
