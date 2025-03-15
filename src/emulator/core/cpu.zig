@@ -19,15 +19,17 @@ pub const Privilege = enum {
 pub const Cpu = struct {
     const Self = @This();
 
+    const DefaultPC = Memory.RomStart + Memory.VecTableSize;
+
     memory: Memory = Memory{},
     csr: CSR = CSR{},
     registers: [32]u32 = [_]u32{0} ** 32,
-    pc: u32 = Memory.RomStart,
+    pc: u32 = DefaultPC,
     current_privilege: Privilege = .Machine,
 
     pub fn reset(self: *Self) void {
         self.registers = [_]u32{0} ** 32;
-        self.pc = Memory.RomStart;
+        self.pc = DefaultPC;
     }
 
     pub fn run(self: *Self) !void {

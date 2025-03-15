@@ -11,7 +11,7 @@ pub const CSR = struct {
 
     mstatus: u32 = 0, // Machine Status Register
     mcause: u32 = 0, // Machine Cause Register
-    mtvec: u32 = RomStart + 16, // Machine Trap Vector Register
+    mtvec: u32 = RomStart, // Machine Trap Vector Register
     mie: u32 = 0, // Machine Interrupt Enable Register
     mepc: u32 = 0, // Machine Exception Program Counter
     mtval: u32 = 0, // Machine Trap Value Register
