@@ -8,16 +8,16 @@ pub const Memory = struct {
     const Self = @This();
 
     //these constants are used to check where an address wants to read from
-    pub const VecTableSize = config.vec_table_size;
+    pub const VecTableSize = config.memmap.vec_table_size;
 
-    pub const RomSize = config.rom_size;
-    pub const RamSize = config.ram_size;
+    pub const RomSize = config.memmap.rom_size;
+    pub const RamSize = config.memmap.ram_size;
 
-    pub const RomStart = config.rom_start;
-    pub const RamStart = config.ram_start;
+    pub const RomStart = config.memmap.rom_start;
+    pub const RamStart = config.memmap.ram_start;
 
-    pub const MmioSize = config.mmio_size;
-    pub const MmioStart = config.mmio_start;
+    pub const MmioSize = config.memmap.mmio_size;
+    pub const MmioStart = config.memmap.mmio_start;
 
     //load and store have different errors because they have a different mcause value
     pub const MemoryError = error{
@@ -51,9 +51,7 @@ pub const Memory = struct {
             return std.mem.readVarInt(T, self.ram[addr .. addr + @sizeOf(T)], .little);
         }
         if (address_in_range(address, MmioStart, MmioSize)) {
-            var buf = [1]u8{0};
-            _ = std.io.getStdIn().read(&buf) catch {};
-            return @intCast(buf[0]);
+            return self.mmio_read(T, address - MmioStart);
         }
         std.log.err("Out of bounds read to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
         return MemoryError.LoadOutOfBounds;
@@ -77,12 +75,32 @@ pub const Memory = struct {
             return;
         }
         if (address_in_range(address, MmioStart, MmioSize)) {
-            if (address == MmioStart) std.process.exit(@intCast(value)); //our way of exiting emulator for now
-            std.debug.print("{any}\n", .{value});
-            return;
+            try self.mmio_write(T, address - MmioStart, value);
         }
 
         std.log.err("Out of bounds write to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
         return MemoryError.StoreOutOfBounds;
+    }
+
+    //seperate function to keep the read/write functions clean
+    fn mmio_write(self: *Self, comptime T: type, offset: u32, value: T) MemoryError!void {
+        _ = self;
+        switch (offset) {
+            0x0 => std.process.exit(@truncate(value)), //exit
+            else => return MemoryError.StoreNotAllowed,
+        }
+    }
+
+    const kernel_code = @embedFile("kernelbinary"); //replaced by zig build
+    fn load_kernel(self: *Self) u32 {
+        std.mem.copyForwards(u8, self.ram[config.memmap.kernel_ram_offset..], kernel_code);
+        return Memory.RamStart + config.memmap.kernel_ram_offset;
+    }
+
+    fn mmio_read(self: *Self, comptime T: type, offset: u32) MemoryError!T {
+        switch (offset) {
+            0x4 => return @truncate(self.load_kernel()),
+            else => return MemoryError.StoreNotAllowed,
+        }
     }
 };

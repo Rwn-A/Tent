@@ -1,4 +1,4 @@
-*.o
 *.elf
-.zig-cache
 out/tent
+*.o
+.zig-cache

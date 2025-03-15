@@ -1,5 +1,4 @@
 const std = @import("std");
-const config = @import("config");
 
 const instructions = @import("instructions.zig");
 const Instruction = @import("instructions.zig").Instruction;
@@ -171,7 +170,9 @@ pub const Cpu = struct {
                 }
             },
             .I_type => |inst| {
-                const value = inst.imm +% self.registers[inst.rs1];
+                //this computation can overflow the bounds because rs1 is not actually a register for some Itype
+                //there are better ways of doing this
+                const value = if (inst.function != .Mret) inst.imm +% self.registers[inst.rs1] else 0;
                 switch (inst.function) {
                     .Addi => self.register_write(inst.rd, value),
                     .Lw => self.register_write(inst.rd, try self.memory.read(u32, value)),
