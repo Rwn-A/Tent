@@ -6,6 +6,7 @@ export fn kernel_main() void {
     sys_exit();
 }
 
+//overwrite default
 export fn vector_table() callconv(.naked) noreturn {
     asm volatile (
         \\ jal   zero, trapDefault
@@ -73,7 +74,9 @@ export fn trapEcall() void {
 export fn sys_exit() noreturn {
     asm volatile (
         \\la t0, mmio_start
-        \\li t1, 35
+        \\li t1, 10
+        \\li t2, 3
+        \\rem t1, t1, t2
         \\sb t1, 0(t0)
     );
     unreachable;

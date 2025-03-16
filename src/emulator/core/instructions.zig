@@ -42,6 +42,16 @@ pub const Instr_Function = enum(u32) {
     Or, // or
     And, // and
 
+    //M mode extension
+    Mul,
+    Mulh,
+    Mulhsu,
+    Mulhu,
+    Div,
+    Divu,
+    Rem,
+    Remu,
+
     Jalr, // jump and link register
 
     Jal, // jump
@@ -292,19 +302,21 @@ fn decode_R_type_instr(encoded_instruction: u32) DecodeError!R_Type_Instr {
         0 => switch (funct7) {
             0b0000000 => .Add,
             0b0100000 => .Sub,
+            0b0000001 => .Mul,
             else => return DecodeError.UnknownInstruction,
-        },
-        0b001 => .Sll,
-        0b010 => .Slt,
-        0b011 => .Sltu,
-        0b100 => .Xor,
+        }, //yes this would parse some instructions as mul even if they were not but this is easier for now
+        0b001 => if (funct7 == 0) .Sll else .Mulh,
+        0b010 => if (funct7 == 0) .Slt else .Mulhsu,
+        0b011 => if (funct7 == 0) .Sltu else .Mulhu,
+        0b100 => if (funct7 == 0) .Xor else .Div,
         0b101 => switch (funct7) {
             0b0000000 => .Srl,
             0b0100000 => .Sra,
+            0b0000001 => .Divu,
             else => return DecodeError.UnknownInstruction,
         },
-        0b110 => .Or,
-        0b111 => .And,
+        0b110 => if (funct7 == 0) .Or else .Rem,
+        0b111 => if (funct7 == 0) .And else .Remu,
         else => return DecodeError.UnknownInstruction,
     };
     return result;

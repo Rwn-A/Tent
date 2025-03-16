@@ -5,15 +5,22 @@ A minimal Risc-V implementation.
 - **RV32I Unpriviledged:**\
     Mostly compliant, not sure if every instruction behaves exactly according to spec on edge cases. The ebreak instruction is also not really implemented properly, it is currently being used to help debug the emulator as opposed to debug user code.
 
+- **M Extension:**
+    Compliant with all RV32M instructions.
+
 - **Zicsr:**\
     CSR instructions are all implemented according to spec, but not all csrs are implemented. See the privileged spec compliance for details.
 
 - **Privileged:**\
     The basic CSR's required for handling environment calls and exceptions are in place but none of the user mode timer CSR's are implemented. the mstatus CSR is partially implemented. Supervisor mode is completely unimplemented but there is some distinction between Machine and User mode however it is not completely spec compliant. Finally, only the mret instruction is implemented.
 
+
+## Extras
+The emulator has a builtin boot loader, if you could even call it that, it sets the stack pointer and jumps to specific address where the kernel entry is. The emulator also has a builtin kernel that is also very minimal but I am picking away at it here and there.
+
 ## Planned Additions
 - [ ] More CSR's
-- [ ] M extension
+- [x] M extension
 - [ ] Memory Mapped IO Interface
 
 ## Possible Additions

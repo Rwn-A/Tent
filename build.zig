@@ -24,14 +24,14 @@ pub fn build(b: *std.Build) !void {
 
     //used to configure emulator and boot code linker script.
     //vec table implicitly starts at bottom of rom
-    const ram_size = b.option(u32, "ramsize", "Amount in bytes of RAM") orelse 0x800000;
+    const ram_size = b.option(u32, "ramsize", "Amount in bytes of RAM") orelse 0x400000;
     const rom_size = b.option(u32, "romsize", "Amount in bytes of ROM") orelse 0x2000;
     const vec_table_size = b.option(u32, "vectbsize", "Size in bytes that the vector table will take up") orelse 0x100;
     const rom_start = b.option(u32, "romstart", "Address to start ROM") orelse 0x0;
     const ram_start = (rom_size + rom_start);
     const mmio_size = 0x10000;
     const mmio_start = ram_size + ram_start;
-    const kernel_ram_offset: u32 = b.option(u32, "kerneladdr", "Offset from beggining of RAM") orelse 0x0;
+    const kernel_ram_offset: u32 = b.option(u32, "kerneladdr", "Offset from beggining of RAM") orelse ((ram_start + ram_size) - 0x80000);
 
     const memmap = MemoryMap{
         .ram_size = ram_size,
@@ -242,7 +242,8 @@ fn kernel_linker_script(allocator: std.mem.Allocator, memmap: MemoryMap) ![]u8 {
         \\
         \\MEMORY
         \\{{
-        \\    RAM (rwx)  : ORIGIN =  0x{x}, LENGTH = 0x{x} 
+        \\    MRAM (rwx)  : ORIGIN =  0x{x}, LENGTH = 0x{x} 
+        \\    URAM (rwx)  : ORIGIN = 0x{x}, LENGTH = 0x{x}
         \\    MMIO_RESERVED (rw) : ORIGIN = 0x{x}, LENGTH = 0x{x}
         \\}}
         \\
@@ -252,29 +253,32 @@ fn kernel_linker_script(allocator: std.mem.Allocator, memmap: MemoryMap) ![]u8 {
         \\      *(.text.kernel_main)
         \\       *(.text)     
         \\       *(.text*)              
-        \\    }} > RAM = 0x{x}
+        \\    }} > MRAM
         \\
         \\
         \\    .data : {{
         \\        *(.data)
         \\         *(.data*)                
-        \\    }} > RAM     
+        \\    }} > MRAM     
         \\
         \\    
         \\    .bss : {{
         \\        *(.bss)    
         \\        *(.bss*)              
-        \\    }} > RAM
+        \\    }} > MRAM
         \\    
         \\}} 
         \\ PROVIDE(mmio_start = ORIGIN(MMIO_RESERVED));
+        \\ PROVIDE(user_ram_start = ORIGIN(URAM));
+        \\ PROVIDE(user_ram_end = ORIGIN(URAM) + LENGTH(URAM));
     ;
     const text = try std.fmt.allocPrint(allocator, fmt_str, .{
+        memmap.ram_start + memmap.kernel_ram_offset,
+        memmap.ram_size - (memmap.ram_start + memmap.kernel_ram_offset),
         memmap.ram_start,
-        memmap.ram_size,
+        memmap.ram_start + memmap.kernel_ram_offset,
         memmap.mmio_start,
         memmap.mmio_size,
-        memmap.ram_start + memmap.kernel_ram_offset,
     });
     return text;
 }

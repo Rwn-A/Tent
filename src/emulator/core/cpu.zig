@@ -166,6 +166,50 @@ pub const Cpu = struct {
                             self.register_write(inst.rd, (a >> @as(u5, @truncate(b))));
                         }
                     },
+                    .Mul => self.register_write(inst.rd, self.registers[inst.rs1] *% self.registers[inst.rs2]),
+                    .Mulh, .Mulhsu => {
+                        const result: i64 = @as(i64, self.registers[inst.rs1]) *% @as(i64, self.registers[inst.rs2]);
+                        self.register_write(inst.rd, @truncate(@as(u64, @bitCast(result)) >> 32));
+                    },
+                    .Mulhu => {
+                        const result: u64 = @as(u64, self.registers[inst.rs1]) *% @as(u64, self.registers[inst.rs2]);
+                        self.register_write(inst.rd, @truncate(result >> 32));
+                    },
+                    .Div => {
+                        if (self.registers[inst.rs2] == 0) {
+                            self.register_write(inst.rd, @bitCast(@as(i32, -1)));
+                        } //division by zero returns -1
+                        else if (self.registers[inst.rs1] == std.math.minInt(i32) and self.registers[inst.rs2] == @as(u32, @bitCast(@as(i32, -1)))) {
+                            self.register_write(inst.rd, self.registers[inst.rs1]);
+                        } // Handle overflow case
+                        else {
+                            const result: i32 = @divExact(@as(i32, @bitCast(self.registers[inst.rs1])), @as(i32, @bitCast(self.registers[inst.rs2])));
+                            self.register_write(inst.rd, @bitCast(result));
+                        }
+                    },
+                    .Divu => {
+                        if (self.registers[inst.rs2] == 0) { //return max int if div by 0
+                            self.register_write(inst.rd, std.math.maxInt(u32));
+                        } else {
+                            self.register_write(inst.rd, @divExact(self.registers[inst.rs1], self.registers[inst.rs2]));
+                        }
+                    },
+                    .Rem => {
+                        if (self.registers[inst.rs2] == 0) {
+                            self.register_write(inst.rd, self.registers[inst.rs1]); // Remainder by zero returns rs1 (per spec)
+                        } else if (@as(i32, @bitCast(self.registers[inst.rs1])) == std.math.minInt(i32) and self.registers[inst.rs2] == @as(u32, @bitCast(@as(i32, -1)))) {
+                            self.register_write(inst.rd, 0);
+                        } else {
+                            self.register_write(inst.rd, @bitCast(@rem(@as(i32, @bitCast(self.registers[inst.rs1])), @as(i32, @bitCast(self.registers[inst.rs2])))));
+                        }
+                    },
+                    .Remu => {
+                        if (self.registers[inst.rs2] == 0) {
+                            self.register_write(inst.rd, self.registers[inst.rs1]); // Remainder by zero returns rs1 (per spec)
+                        } else {
+                            self.register_write(inst.rd, @rem(self.registers[inst.rs1], self.registers[inst.rs2]));
+                        }
+                    },
                     else => unreachable,
                 }
             },
