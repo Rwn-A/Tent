@@ -21,7 +21,7 @@ The emulator has a builtin boot loader, if you could even call it that, it sets 
 ## Planned Additions
 - [ ] More CSR's
 - [x] M extension
-- [ ] Memory Mapped IO Interface
+- [x] Memory Mapped IO Interface (Minimal, can write/read from console, load kernel and stop emulator)
 
 ## Possible Additions
 - [ ] Memory Management Unit

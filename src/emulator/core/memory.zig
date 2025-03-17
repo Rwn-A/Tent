@@ -75,7 +75,7 @@ pub const Memory = struct {
             return;
         }
         if (address_in_range(address, MmioStart, MmioSize)) {
-            try self.mmio_write(T, address - MmioStart, value);
+            return self.mmio_write(T, address - MmioStart, value);
         }
 
         std.log.err("Out of bounds write to {d}: start: {d}, end: {d}", .{ address, RamStart, RamStart + RamSize });
@@ -87,6 +87,20 @@ pub const Memory = struct {
         _ = self;
         switch (offset) {
             0x0 => std.process.exit(@truncate(value)), //exit
+            0x8 => std.debug.print("{c}", .{@as(u8, @truncate(value))}),
+            else => return MemoryError.StoreNotAllowed,
+        }
+    }
+
+    fn mmio_read(self: *Self, comptime T: type, offset: u32) MemoryError!T {
+        switch (offset) {
+            0x4 => return @truncate(self.load_kernel()),
+            0x8 => {
+                const stdin = std.io.getStdIn().reader();
+                var buffer: [1]u8 = undefined;
+                _ = stdin.readAll(&buffer) catch {};
+                return buffer[0];
+            },
             else => return MemoryError.StoreNotAllowed,
         }
     }
@@ -95,12 +109,5 @@ pub const Memory = struct {
     fn load_kernel(self: *Self) u32 {
         std.mem.copyForwards(u8, self.ram[config.memmap.kernel_ram_offset..], kernel_code);
         return Memory.RamStart + config.memmap.kernel_ram_offset;
-    }
-
-    fn mmio_read(self: *Self, comptime T: type, offset: u32) MemoryError!T {
-        switch (offset) {
-            0x4 => return @truncate(self.load_kernel()),
-            else => return MemoryError.StoreNotAllowed,
-        }
     }
 };

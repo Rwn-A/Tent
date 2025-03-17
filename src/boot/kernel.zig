@@ -2,6 +2,9 @@ export fn kernel_main() void {
     asm volatile (
         \\la t0, vector_table
         \\csrw mtvec, t0
+        \\la t0, mmio_start
+        \\li t1, 97
+        \\sw t1, 8(t0)
     );
     sys_exit();
 }
